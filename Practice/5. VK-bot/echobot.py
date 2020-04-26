@@ -16,8 +16,8 @@ from skimage import io
 # Общая документация по vk api
 
 
-VK_TOKEN = '803b661b91dbacce5d3a28e3090f11a2aa14c90cf10c2bbc54aaaa68a66d250f5ea8b8f4b4474db1f2497'
-GROUP_ID = 188413006
+VK_TOKEN = 'a2a00757ac339e61916c8f45a666fce8b028e3945c45adbf4130cb92ddd327a1d23d1f6ce0f64ff684e87'
+GROUP_ID = 194690703
 # Напишите сюда свой токен и id группы.
 
 
