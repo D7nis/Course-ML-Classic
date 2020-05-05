@@ -7,7 +7,9 @@ import random
 import argparse
 import traceback
 
-from skimage import io
+import re
+from skimage import io, img_as_float
+from sklearn.cluster import KMeans
 
 # Эхо бот
 # https://github.com/python273/vk_api
@@ -16,8 +18,8 @@ from skimage import io
 # Общая документация по vk api
 
 
-VK_TOKEN = 'a2a00757ac339e61916c8f45a666fce8b028e3945c45adbf4130cb92ddd327a1d23d1f6ce0f64ff684e87'
-GROUP_ID = 194690703
+VK_TOKEN = 'a2a0075....'
+GROUP_ID = 0# пример 194690777
 # Напишите сюда свой токен и id группы.
 
 
@@ -35,6 +37,8 @@ def main():
     uploader = VkUpload(vk_session)  # Понадобится для загрузки своих изображений в вк
     long_poll = VkBotLongPoll(vk_session, params.vk_group_id)
 
+    flag_first_message = True # Первое сообщение, флаг.
+
     for event in long_poll.listen():
         if event.type == VkBotEventType.MESSAGE_NEW:
             print(type(event.obj))
@@ -45,26 +49,10 @@ def main():
             peer_id = message['peer_id']  # ID пользователя куда отсылать ответ
             from_id = message['from_id']  # ID пользователя который прислал сообщение
             text = message['text']  # Текст сообщения
+            text_answer = '' #Текст ответа пользователю
+            text_answer_kmeans = ''#Текст ответа, если  пользователь ввел число кластеров
 
-            if len(text) > 0:
-                # Ответим пользователю
-                answer = {
-                    'peer_id': peer_id,
-                    # peer_id - ID кому отвечаем. Подробнее смотрите в документации. Нам сейчас и этого достаточно.
-                    'random_id': random.randint(0, 100000),
-                    # random_id - уникальный (в привязке к API_ID и ID отправителя) идентификатор,
-                    # предназначенный для предотвращения повторной отправки одинакового сообщения.
-                    # Сохраняется вместе с сообщением и доступен в истории сообщений.
-                    # Заданный random_id используется для проверки уникальности за всю историю сообщений,
-                    # поэтому используйте большой диапазон (до int64).
-                }
-                # Добавим текст к ответу
-                answer.update({'message': text})
-                vk_session.method('messages.send', answer)  # Отправляет сообщение
-                # https://vk.com/dev/messages.send документация
-                # Там еще есть очень много всего. Например, вместо peer_id можно оправлять user_id.
-                print(answer)
-                print()
+            text_example = "Кинь картнику и введи количество цветов вот так: colors=5"
 
             attachments = message['attachments']  # Вложенные файлы(это и изображения и музыка и видео и т.д)
             print(type(attachments))  # Так как их может быть несколько это список
@@ -83,7 +71,31 @@ def main():
                 best_photo = photos[0]
                 best_photo_url = best_photo['url']
                 img = io.imread(best_photo_url)  # skimage умеет получать изображения по url
-                io.imsave("test.png", img)  # сохраним изображение как test.png
+
+                #ввел ли пользователь число кластеров? Если да, то сохраняем
+                max_clusters = 15
+                min_clusters = 2
+
+                сlusters=8
+                user_clusters = re.findall(r'colors=(\d+)', text)
+
+                text_answer_kmeans = 'Готово! Тут {} цветов.'.format(сlusters)
+                if len(user_clusters) > 0:
+                    user_clusters = int(user_clusters[0])
+                    if ((user_clusters > min_clusters-1) and (user_clusters < max_clusters+1)):
+                        сlusters = user_clusters
+                        text_answer_kmeans = 'Nice! Держи! Тут {} цветов.'.format(сlusters)
+                    else:
+                        text_answer_kmeans = 'Допустимый диапазон цветов то {} до {}, сделал по дефолту. \n\n{}'.format(min_clusters, max_clusters, text_example )
+
+                #преобразование картинки
+                img_float_res = img_as_float(img).reshape(-1, 3)
+                clf = KMeans(n_clusters=сlusters)
+                clf.fit(img_float_res)
+                segmented_image = clf.cluster_centers_[clf.labels_]
+                segmented_image = segmented_image.reshape(img.shape)
+                io.imsave("test.png", segmented_image)
+                #io.imsave("test.png", img)  # сохраним изображение как test.png
 
                 uploaded_photos = uploader.photo_messages("./test.png")
                 # Можно загрузить несколько изображений сразу.
@@ -107,6 +119,43 @@ def main():
                 print(answer_with_img)
                 print()
 
+            if len(text) > 0:
+                # Ответим пользователю
+                answer = {
+                    'peer_id': peer_id,
+                    # peer_id - ID кому отвечаем. Подробнее смотрите в документации. Нам сейчас и этого достаточно.
+                    'random_id': random.randint(0, 100000),
+                    # random_id - уникальный (в привязке к API_ID и ID отправителя) идентификатор,
+                    # предназначенный для предотвращения повторной отправки одинакового сообщения.
+                    # Сохраняется вместе с сообщением и доступен в истории сообщений.
+                    # Заданный random_id используется для проверки уникальности за всю историю сообщений,
+                    # поэтому используйте большой диапазон (до int64).
+                }
+                # Добавим текст к ответу
+                text_default_dict = {
+                    1: 'Ты много от меня хочешь!',
+                    2: 'Мда...',
+                    3: 'Ну и что тут не понятного ?!?',
+                    4: '',
+                    5: 'Давай еще раз!'
+                }
+                text_default = text_default_dict[random.randrange(1, 5, 1)]
+
+                if flag_first_message:
+                    flag_first_message = False
+                    text_default = "Привет, я знаю KMeans! Короче, я могу преобразовать твою картинку в заданное количество цветов!"
+
+                if len(text_answer_kmeans) > 0:
+                    text_answer = text_answer_kmeans
+                else:
+                    text_answer = text_default + '\n\n' + text_example
+
+                answer.update({'message': text_answer})
+                vk_session.method('messages.send', answer)  # Отправляет сообщение
+                # https://vk.com/dev/messages.send документация
+                # Там еще есть очень много всего. Например, вместо peer_id можно оправлять user_id.
+                print(answer)
+                print()
 
 # Это всего лишь пример, а не идеальный код.
 # Как вы видите vk_api не очень удобное.
